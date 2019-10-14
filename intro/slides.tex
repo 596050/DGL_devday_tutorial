@@ -159,6 +159,7 @@ H = tf.nn.relu(tf.concat([H_N, H], 1) @ W)
 # dst: edge destination node IDs (n_nodes,)
 # H: node repr matrix (n_nodes, in_dim)
 # W: weights (in_dim * 2, out_dim)
+# SIMPLIFIED - only one attention head is considered
 H_src = tf.gather(H, src)
 H_dst = tf.gather(H, dst)
 alpha_hat = MLP(tf.concat([H_dst, H_src], 1))
@@ -373,7 +374,6 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 		\end{minipage}
 	\end{frame}
 
-
 	\begin{frame}[fragile]
 	\frametitle{With attention?}
 	\begin{minipage}{0.4\textwidth}
@@ -551,6 +551,33 @@ g.multi_update_all(funcs, cross_reducer='sum')
 	\end{frame}
 
 	\begin{frame}
+		\frametitle{Is it efficient?}
+		\begin{center}
+			\centering
+			\begin{tabular}{|p{0.3\textwidth}p{0.2\textwidth}p{0.2\textwidth}p{0.2\textwidth}|}
+				\hline
+				Model & Train time/epoch (Original) & Train time/epoch (DGL) & Speedup \\
+				\hline
+				Graph Convolutional Networks & 0.0051s (TF) & 0.0031s & 1.64x \\
+				\hline
+				Graph Attention Networks & 0.0982s (TF) & 0.0113s & 8.69x \\
+				\hline
+				Relational GCN (classification) & 0.2853s (Theano) & 0.0075s & 38.2x \\
+				\hline
+				Relational GCN (link prediction) & 2.204s (TF) & 0.453s & 4.86x \\
+				\hline
+				Graph Convolutional Matrix Completion (MovieLens-100k) & 0.1008s (TF) & 0.0246s (MXNet) & 4.09x \\
+				\hline
+				TreeLSTM & 14.02s (DyNet) & 3.18s & 4.3x \\
+				\hline
+				Junction Tree Variational Autoencoder & 1826s (PyTorch) & 743s & 2.5x \\
+				\hline
+			\end{tabular}
+			And much more examples....
+		\end{center}
+	\end{frame}
+
+	\begin{frame}
 		\frametitle{How about scaling to larger graphs?}
 		\begin{itemize}
 			\item Full-graph updates become infeasible on large graphs with millions of nodes and billions of edges.
@@ -572,6 +599,7 @@ g.multi_update_all(funcs, cross_reducer='sum')
 			\centering
 			\includegraphics[width=\textwidth]{nodeflow2.png}
 		\end{center}
+		Enables training on a graph with 0.5 billion nodes and 25 billion edges.
 	\end{frame}
 
 	\begin{frame}[fragile]

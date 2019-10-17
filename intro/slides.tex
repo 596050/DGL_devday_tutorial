@@ -291,14 +291,14 @@ def reduce_func(nodes):
 	\end{frame}
 
 	\begin{frame}[fragile]
-		\frametitle{How about LSTM\footnote{Fan et al., \emph{Metapath-guided Heterogeneous Graph Neural Network for Intent Recommendation}, KDD 2019}\footnote{Zhang et al., \emph{HetGNN: Heterogeneous Graph Neural Network}, KDD 2019}?}
+		\frametitle{How about LSTM\footnote{Fan et al., \emph{Metapath-guided Heterogeneous Graph Neural Network for Intent Recommendation}, KDD 2019}?}
 		\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
 # code: PyTorch
 # src: edge source node IDs (n_nodes,)
 # dst: edge destination node IDs (n_nodes,)
 # t: timestamp of edges.
-#    LSTM will go through messages in the order
+#    LSTM goes through messages in the order
 #    of timestamps
 # H: node repr matrix (n_nodes, in_dim)
 # lstm: LSTM module

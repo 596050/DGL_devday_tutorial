@@ -9,7 +9,9 @@
 \usepackage{hyperref}
 \usepackage{listings}
 \usepackage{xcolor}
+\usepackage{soul}
 \usepackage[11pt]{moresize}
+\usepackage{multirow}
 
 \definecolor{codegreen}{rgb}{0,0.6,0}
 \definecolor{codegray}{rgb}{0.5,0.5,0.5}
@@ -22,18 +24,30 @@
 	keywordstyle=\color{magenta},
 	numberstyle=\color{codegray},
 	stringstyle=\color{codepurple},
-	basicstyle=\ttfamily\tiny,
+	basicstyle=\ttfamily\scriptsize,
 	breakatwhitespace=false,         
 	breaklines=true,                 
 	captionpos=b,                    
-	keepspaces=true,             
-	numbersep=5pt,                  
+	keepspaces=true,                 
 	showspaces=false,                
 	showstringspaces=false,
 	showtabs=false,                  
+	framesep=0mm,
 	tabsize=4
 }
 \lstset{style=standard}
+\lstset{escapeinside={(*@}{@*)}}
+
+\AtBeginSection[]{
+	\begin{frame}
+		\vfill
+		\centering
+		\begin{beamercolorbox}[sep=8pt,center,shadow=true,rounded=true]{title}
+			\usebeamerfont{title}\insertsectionhead\par%
+		\end{beamercolorbox}
+		\vfill
+	\end{frame}
+}
 
 \usetheme{Singapore}
 \begin{document}
@@ -49,9 +63,58 @@
 	\begin{frame}[plain]
 		\maketitle
 	\end{frame}
+
+	\begin{frame}
+		\frametitle{What does DGL provide?}
+		\begin{itemize}
+			\item From bottom-level to top-level:
+			\begin{itemize}
+				\item \emph{Plug-and-play model zoo}, to run an existing model on your data directly
+				\item \emph{Easy-to-use graph neural network layer modules}, to plugin popular GNN layers into your model.
+				\item \emph{Flexible and efficient message passing APIs}, to design your own message passing (not necessarily full-graph!) from scratch.
+			\end{itemize}
+		\end{itemize}
+	\end{frame}
+	
+	\begin{frame}[fragile]
+		\frametitle{Model Zoo?}
+		\begin{itemize}
+			\item Get a (pretrained) model that works on molecules immediately:
+\begin{lstlisting}[language=Python]
+from dgl.model_zoo.chem import load_pretrained
+model = load_pretrained('MPNN_Alchemy')
+result = model(molecule, atom_features, bond_features)
+\end{lstlisting}
+			\item We just released a subpackage \emph{DGL-KE} for training embeddings on large scale knowledge graphs such as FreeBase.
+			\item We are shooting for a model zoo for recommender systems in 0.5.
+		\end{itemize}
+	\end{frame}
+
+	\begin{frame}[fragile]
+		\frametitle{Graph Neural Network Layer Modules?}
+		\begin{itemize}
+			\item Use DGL GNN Modules to build a bigger network:
+\begin{lstlisting}[language=Python]
+from dgl.nn.pytorch import SAGEConv
+
+# One layer GraphSAGE
+class NodeClassifier(nn.Module):
+    def __init__(self, in_dim, n_classes):
+        self.gnn = SAGEConv(in_dim, in_dim, 'mean')
+        self.cls = nn.Linear(in_dim, n_classes)
+    def forward(self, g, x):
+        h = self.gnn(g, x)
+        return self.cls(h)
+\end{lstlisting}
+			\item We have lots of popular GNN modules implemented.
+			\begin{itemize}
+				\item The list is growing!
+			\end{itemize}
+		\end{itemize}
+	\end{frame}
 	
 	\begin{frame}
-		\frametitle{Recap: Graph Neural Networks}
+		\frametitle{Custom Graph Neural Network Layer?}
 		$$
 		h^{(k)}_v = \phi\left(
 		h^{(k-1)}_v,
@@ -72,20 +135,9 @@
 	\end{frame}
 
 	\begin{frame}[fragile]
-		\frametitle{A common case\footnote{Hamilton et al., \emph{Inductive Representation Learning on Large Graphs}, NIPS 2017}}
-		\begin{minipage}{0.4\textwidth}
-		If $f(\cdot)$ is average:
-		$$
-		\begin{gathered}
-		h_{\mathcal{N}(v)}^{(k)} = \dfrac{1}{\left\lvert \mathcal{N}(v) \right\rvert}
-		\sum_{u \in \mathcal{N}(v)} h^{(k-1)}_u \\
-		h^{(k)}_v =
-		\sigma \left( W^{(k)} \left[h_v^{(k-1)} \Vert h_{\mathcal{N}(v)}^{(k)}\right] \right)
-		\end{gathered}
-		$$
-		\end{minipage}\hfill%
+		\frametitle{Aggregation: Average Pooling\footnote{Hamilton et al., \emph{Inductive Representation Learning on Large Graphs}, NIPS 2017}}
 		\begin{minipage}{0.5\textwidth}
-			Sparse matrix multiplication, easy:
+			Sparse matrix multiplication, very well-known:
 \begin{lstlisting}[language=Python]
 # code: PyTorch
 # src: edge source node IDs (n_nodes,)
@@ -100,24 +152,29 @@ in_deg = torch.sparse.sum(A, 1).to_dense()
 H_N = A @ H / in_deg.unsqueeze(1)
 H = torch.relu(torch.cat([H_N, H], 1) @ W)
 \end{lstlisting}
+		\end{minipage}%
+		\begin{minipage}{0.5\textwidth}
+\begin{lstlisting}[language=Python]
+# code: PyTorch + DGL
+# G: DGL Graph
+# H: node repr matrix (n_nodes, in_dim)
+# W: weights (in_dim * 2, out_dim)
+import dgl.function as fn
+G.ndata['h'] = H
+G.update_all(
+    fn.copy_u('h', 'm'),
+    fn.mean('m', 'h_n'))
+H_N = G.ndata['h_n']
+H = torch.relu(torch.cat([H_N, H], 1) @ W)
+\end{lstlisting}
 		\end{minipage}
 	\end{frame}
 
 	\begin{frame}[fragile]
 		\frametitle{How about max pooling?}
 		
-		\begin{minipage}{0.4\textwidth}
-			$$
-			\begin{gathered}
-			h_{\mathcal{N}(v)}^{(k)} =
-			\max_{u \in \mathcal{N}(v)} h^{(k-1)}_u \\
-			h^{(k)}_v =
-			\sigma \left( W^{(k)} \left[h_v^{(k-1)} \Vert h_{\mathcal{N}(v)}^{(k)}\right] \right)
-			\end{gathered}
-			$$
-		\end{minipage}\hfill%
-		\begin{minipage}{0.5\textwidth}
-			Only Tensorflow supports what we need natively:
+			Not possible in Vanilla PyTorch \& MXNet.  Not memory-efficient in Tensorflow.
+\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
 # code: Tensorflow 2
 # src: edge source node IDs (n_nodes,)
@@ -131,28 +188,28 @@ H_N = tf.math.unsorted_segment_max(
     H_src, dst, n_nodes)
 H = tf.nn.relu(tf.concat([H_N, H], 1) @ W)
 \end{lstlisting}
-		\end{minipage}
+\end{minipage}%
+\begin{minipage}{0.5\textwidth}
+\begin{lstlisting}[language=Python]
+# code: PyTorch + DGL
+# G: DGL Graph
+# H: node repr matrix (n_nodes, in_dim)
+# W: weights (in_dim * 2, out_dim)
+import dgl.function as fn
+G.ndata['h'] = H
+G.update_all(
+    fn.copy_u('h', 'm'),
+    fn.(*@\textit{\textcolor{red}{max}}@*)('m', 'h_n'))
+H_N = G.ndata['h_n']
+H = torch.relu(torch.cat([H_N, H], 1) @ W)
+\end{lstlisting}
+\end{minipage}
 	\end{frame}
 
 	\begin{frame}[fragile]
 		\frametitle{With attention?\footnote{Velickovic et al., \emph{Graph Attention Networks}, ICLR 2018}}
-		\begin{minipage}{0.4\textwidth}
-			If $f(\cdot)$ is a \emph{weighted} summation:
-			$$
-			\begin{gathered}
-			\hat\alpha ^{(k-1)}_{v,u} = MLP\left(\left[h_v^{(k-1)} \Vert h_u^{(k-1)}\right]\right) \\
-			\alpha^{(k-1)}_{v,u} = softmax_j\left(
-			\hat\alpha ^{(k-1)}_{v,u}
-			\right)\\
-			h_{\mathcal{N}(v)}^{(k)} =
-			\sum_{u \in \mathcal{N}(v)} \alpha^{(k-1)}_{v,u} h^{(k-1)}_u \\
-			h^{(k)}_v =
-			\sigma \left( W^{(k)} \left[h_v^{(k-1)}; h_{\mathcal{N}(v)}^{(k)}\right] \right)
-			\end{gathered}
-			$$
-		\end{minipage}\hfill%
+		Can't do it easily with vanilla PyTorch/MXNet.  Possible in Tensorflow
 		\begin{minipage}{0.5\textwidth}
-			Can't do it easily with vanilla PyTorch/MXNet.  Possible in Tensorflow
 \begin{lstlisting}[language=Python]
 # code: Tensorflow 2
 # src: edge source node IDs (n_nodes,)
@@ -168,28 +225,74 @@ alpha_hat_sp = tf.sparse.SparseTensor(
     alpha_hat,
     (n_nodes, n_nodes))
 alpha = tf.sparse.softmax(alpha_hat_sp)
-H_N = tf.sparse.sparse_dense_matmul(alpha, H)
+H_N = tf.sparse.sparse_dense_matmul(
+    alpha, H)
 H = tf.nn.relu(tf.concat([H_N, H], 1) @ W)
+\end{lstlisting}
+		\end{minipage}%
+		\begin{minipage}{0.5\textwidth}
+\begin{lstlisting}[language=Python]
+# code: PyTorch + DGL
+# G: DGL Graph
+# H: node repr matrix (n_nodes, in_dim)
+# W: weights (in_dim * 2, out_dim)
+
+import dgl.function as fn
+G.ndata['h'] = H
+G.update_all((*@\textit{\textcolor{red}{msg\_func}}@*), (*@\textit{\textcolor{red}{reduce\_func}}@*))
+H_N = G.ndata['h_n']
+H = torch.relu(torch.cat([H_N, H], 1) @ W)
+\end{lstlisting}
+		\end{minipage}
+	\end{frame}
+
+	\begin{frame}[fragile]
+		\frametitle{With attention?}
+		Can't do it easily with vanilla PyTorch/MXNet.  Possible in Tensorflow
+		\begin{minipage}{0.5\textwidth}
+\begin{lstlisting}[language=Python]
+# code: Tensorflow 2
+# src: edge source node IDs (n_nodes,)
+# dst: edge destination node IDs (n_nodes,)
+# H: node repr matrix (n_nodes, in_dim)
+# W: weights (in_dim * 2, out_dim)
+# SIMPLIFIED - only one attention head is considered
+H_src = tf.gather(H, src)
+H_dst = tf.gather(H, dst)
+alpha_hat = MLP(tf.concat([H_dst, H_src], 1))
+alpha_hat_sp = tf.sparse.SparseTensor(
+    tf.stack([dst, src], 1),
+    alpha_hat,
+    (n_nodes, n_nodes))
+alpha = tf.sparse.softmax(alpha_hat_sp)
+H_N = tf.sparse.sparse_dense_matmul(
+    alpha, H)
+H = tf.nn.relu(tf.concat([H_N, H], 1) @ W)
+\end{lstlisting}
+		\end{minipage}%
+		\begin{minipage}{0.5\textwidth}
+\begin{lstlisting}[language=Python]
+def msg_func(edges):
+    h_src = edges.src['h']
+    h_dst = edges.dst['h']
+    alpha_hat = MLP(
+        torch.cat([h_dst, h_src], 1))
+    return {'m': h_src, 'alpha_hat': alpha}
+
+def reduce_func(nodes):
+    # Incoming messages are batched along 2nd axis.
+    m = nodes.mailbox['m']
+    alpha_hat = nodes.mailbox['alpha_hat']
+    alpha = torch.softmax(alpha_hat, 1)
+    return {'h_n':
+        (m * alpha[:, None]).sum(1)}
 \end{lstlisting}
 		\end{minipage}
 	\end{frame}
 
 	\begin{frame}[fragile]
 		\frametitle{How about LSTM\footnote{Fan et al., \emph{Metapath-guided Heterogeneous Graph Neural Network for Intent Recommendation}, KDD 2019}\footnote{Zhang et al., \emph{HetGNN: Heterogeneous Graph Neural Network}, KDD 2019}?}
-		\begin{minipage}{0.4\textwidth}
-			If $f(\cdot)$ is summation:
-			$$
-			\begin{gathered}
-			h_{\mathcal{N}(v)}^{(k)} =
-			LSTM( h^{(k-1)}_{u_1}, \dots, h^{(k-1)}_{u_n} ) \\
-			\text{where } u_i\in \mathcal{N}(v) \text{ are in some order} \\
-			h^{(k)}_v =
-			\sigma \left( W^{(k)} \left[h_v^{(k-1)} \Vert h_{\mathcal{N}(v)}^{(k)}\right] \right)
-			\end{gathered}
-			$$
-		\end{minipage}\hfill%
 		\begin{minipage}{0.5\textwidth}
-			Very complicated:
 \begin{lstlisting}[language=Python]
 # code: PyTorch
 # src: edge source node IDs (n_nodes,)
@@ -203,7 +306,7 @@ H = tf.nn.relu(tf.concat([H_N, H], 1) @ W)
 from torch.nn.utils.rnn import pack_sequence
 # Build adjacency list
 adjlist = []
-for v in range(10): 
+for v in range(n_nodes): 
     v_mask = (dst == v) 
     t_v = t[v_mask] 
     N_v = src[v_mask] 
@@ -216,201 +319,12 @@ packed_seq = pack_sequence(seqs, False)
 _, (H_N, _) = lstm(packed_seq)
 H = torch.relu(torch.cat([H_N, H], 1) @ W)
 \end{lstlisting}
-		\end{minipage}
-	\end{frame}
-
-	\begin{frame}
-		\begin{itemize}
-			\item So for each aggregation and message computation
-			we have to write different code.
-			\item In contrast, let's see how DGL handles the four cases.
-		\end{itemize}
-	\end{frame}
-
-	\begin{frame}[fragile]
-		\frametitle{A common case}
-		\begin{minipage}{0.4\textwidth}
-			If $f(\cdot)$ is average:
-			$$
-			\begin{gathered}
-			h_{\mathcal{N}(v)}^{(k)} = \dfrac{1}{\left\lvert \mathcal{N}(v) \right\rvert}
-			\sum_{u \in \mathcal{N}(v)} h^{(k-1)}_u \\
-			h^{(k)}_v =
-			\sigma \left( W^{(k)} \left[h_v^{(k-1)} \Vert h_{\mathcal{N}(v)}^{(k)}\right] \right)
-			\end{gathered}
-			$$
-		\end{minipage}\hfill%
+		\end{minipage}%
 		\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
-# code: PyTorch
-# src: edge source node IDs (n_nodes,)
-# dst: edge destination node IDs (n_nodes,)
-# H: node repr matrix (n_nodes, in_dim)
-# W: weights (in_dim * 2, out_dim)
-A = torch.sparse_coo_tensor(
-    torch.stack([dst, src], 0),
-    torch.ones(n_nodes),
-    (n_nodes, n_nodes))
-in_deg = torch.sparse.sum(A, 1).to_dense()
-H_N = A @ H / in_deg.unsqueeze(1)
-H = torch.relu(torch.cat([H_N, H], 1) @ W)
-\end{lstlisting}
-
-\begin{lstlisting}[language=Python]
-# code: PyTorch + DGL
-# G: DGL Graph
-# H: node repr matrix (n_nodes, in_dim)
-# W: weights (in_dim * 2, out_dim)
 import dgl.function as fn
 G.ndata['h'] = H
-G.update_all(fn.copy_u('h', 'm'), fn.mean('m', 'h_n'))
-H_N = G.ndata['h_n']
-H = torch.relu(torch.cat([H_N, H], 1) @ W)
-\end{lstlisting}
-
-\begin{lstlisting}[language=Python]
-# code: PyTorch + DGL
-# G: DGL Graph
-# H: node repr matrix (n_nodes, in_dim)
-# For popular models we also have PyTorch/MXNet NN Modules:
-from dgl.nn.pytorch import SAGEConv
-conv = SAGEConv(in_dim * 2, out_dim, 'mean')
-H = conv(G, H)
-\end{lstlisting}
-		\end{minipage}
-	\end{frame}
-
-	\begin{frame}[fragile]
-		\frametitle{How about max pooling?}
-		
-		\begin{minipage}{0.4\textwidth}
-			$$
-			\begin{gathered}
-			h_{\mathcal{N}(v)}^{(k)} =
-			\max_{u \in \mathcal{N}(v)} h^{(k-1)}_u \\
-			h^{(k)}_v =
-			\sigma \left( W^{(k)} \left[h_v^{(k-1)} \Vert h_{\mathcal{N}(v)}^{(k)}\right] \right)
-			\end{gathered}
-			$$
-		\end{minipage}\hfill%
-		\begin{minipage}{0.5\textwidth}
-\begin{lstlisting}[language=Python]
-# code: Tensorflow 2
-# src: edge source node IDs (n_nodes,)
-# dst: edge destination node IDs (n_nodes,)
-# H: node repr matrix (n_nodes, in_dim)
-# W: weights (in_dim * 2, out_dim)
-
-# Broadcast source features to edges
-H_src = tf.gather(H, src)
-H_N = tf.math.unsorted_segment_max(
-    H_src, dst, n_nodes)
-H = tf.nn.relu(tf.concat([H_N, H], 1) @ W)
-\end{lstlisting}
-
-\begin{lstlisting}[language=Python]
-# code: PyTorch + DGL
-# G: DGL Graph
-# H: node repr matrix (n_nodes, in_dim)
-# W: weights (in_dim * 2, out_dim)
-import dgl.function as fn
-G.ndata['h'] = H
-# NOT broadcasting source features to edges
-G.update_all(fn.copy_u('h', 'm'), fn.max('m', 'h_n'))
-H_N = G.ndata['h_n']
-H = torch.relu(torch.cat([H_N, H], 1) @ W)
-\end{lstlisting}
-		\end{minipage}
-	\end{frame}
-
-	\begin{frame}[fragile]
-		\frametitle{With attention?}
-		\begin{minipage}{0.4\textwidth}
-			If $f(\cdot)$ is a \emph{weighted} summation:
-			$$
-			\begin{gathered}
-			\hat\alpha ^{(k-1)}_{v,u} = MLP\left(\left[h_v^{(k-1)} \Vert h_u^{(k-1)}\right]\right) \\
-			\alpha^{(k-1)}_{v,u} = softmax_j\left(
-			\hat\alpha ^{(k-1)}_{v,u}
-			\right)\\
-			h_{\mathcal{N}(v)}^{(k)} =
-			\sum_{u \in \mathcal{N}(v)} \alpha^{(k-1)}_{v,u} h^{(k-1)}_u \\
-			h^{(k)}_v =
-			\sigma \left( W^{(k)} \left[h_v^{(k-1)}; h_{\mathcal{N}(v)}^{(k)}\right] \right)
-			\end{gathered}
-			$$
-		\end{minipage}\hfill%
-		\begin{minipage}{0.5\textwidth}
-			One can write his/her own message and aggregation functions:
-\begin{lstlisting}[language=Python]
-# code: PyTorch + DGL
-# G: DGL Graph
-# H: node repr matrix (n_nodes, in_dim)
-# W: weights (in_dim * 2, out_dim)
-def msg_func(edges):
-    h_src = edges.src['h']
-    h_dst = edges.dst['h']
-    alpha_hat = MLP(torch.cat([h_dst, h_src], 1))
-    return {'m': h_src, 'alpha_hat': alpha}
-
-def reduce_func(nodes):
-    # Incoming messages are batched along 2nd axis.
-    # m has a shape of
-    # (n_nodes_in_batch, in_degrees, msg_dims)
-    m = nodes.mailbox['m']
-    # alpha_hat has a shape of
-    # (n_nodes_in_batch, in_degrees)
-    alpha_hat = nodes.mailbox['alpha_hat']
-    
-    alpha = torch.softmax(alpha_hat, 1)
-    return {'h_n': (m * alpha[:, None]).sum(1)}
-
-import dgl.function as fn
-G.ndata['h'] = H
-G.update_all(msg_func, reduce_func)
-H_N = G.ndata['h_n']
-H = torch.relu(torch.cat([H_N, H], 1) @ W)
-\end{lstlisting}
-		\end{minipage}
-	\end{frame}
-
-	\begin{frame}[fragile]
-	\frametitle{With attention?}
-	\begin{minipage}{0.4\textwidth}
-		If $f(\cdot)$ is a \emph{weighted} summation:
-		$$
-		\begin{gathered}
-		\hat\alpha ^{(k-1)}_{v,u} = MLP\left(\left[h_v^{(k-1)} \Vert h_u^{(k-1)}\right]\right) \\
-		\alpha^{(k-1)}_{v,u} = softmax_j\left(
-		\hat\alpha ^{(k-1)}_{v,u}
-		\right)\\
-		h_{\mathcal{N}(v)}^{(k)} =
-		\sum_{u \in \mathcal{N}(v)} \alpha^{(k-1)}_{v,u} h^{(k-1)}_u \\
-		h^{(k)}_v =
-		\sigma \left( W^{(k)} \left[h_v^{(k-1)}; h_{\mathcal{N}(v)}^{(k)}\right] \right)
-		\end{gathered}
-		$$
-	\end{minipage}\hfill%
-	\begin{minipage}{0.5\textwidth}
-		Built-in message/reduce functions are more time-/memory-efficient.
-\begin{lstlisting}[language=Python]
-# code: PyTorch + DGL
-# G: DGL Graph
-# H: node repr matrix (n_nodes, in_dim)
-# W: weights (in_dim * 2, out_dim)
-# edge_softmax uses built-ins in computation
-from dgl.nn.pytorch import edge_softmax
-import dgl.function as fn
-def msg(edges):
-    h_src = edges.src['h']
-    h_dst = edges.dst['h']
-    return {'alpha': MLP(torch.cat([h_dst, h_src], 1))}
-
-G.ndata['h'] = H
-G.apply_edges(msg)  # Edges now have a feature called 'alpha'
-G.edata['alpha'] = edge_softmax(G, G.edata['alpha'])
-G.update_all(
-    fn.u_mul_e('h', 'alpha', 'm'), fn.sum('m', 'h_n'))
+G.update_all(fn.copy_u('h', 'm'), (*@\textit{\textcolor{red}{reduce\_func}}@*))
 H_N = G.ndata['h_n']
 H = torch.relu(torch.cat([H_N, H], 1) @ W)
 \end{lstlisting}
@@ -419,39 +333,41 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 
 	\begin{frame}[fragile]
 		\frametitle{How about LSTM?}
-		\begin{minipage}{0.4\textwidth}
-			If $f(\cdot)$ is summation:
-			$$
-			\begin{gathered}
-			h_{\mathcal{N}(v)}^{(k)} =
-			LSTM( h^{(k-1)}_{u_1}, \dots, h^{(k-1)}_{u_n} ) \\
-			\text{where } u_i\in \mathcal{N}(v) \text{ are in some order} \\
-			h^{(k)}_v =
-			\sigma \left( W^{(k)} \left[h_v^{(k-1)} \Vert h_{\mathcal{N}(v)}^{(k)}\right] \right)
-			\end{gathered}
-			$$
-		\end{minipage}\hfill%
 		\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
-# code: PyTorch + DGL
-# G: DGL Graph
+# code: PyTorch
+# src: edge source node IDs (n_nodes,)
+# dst: edge destination node IDs (n_nodes,)
 # t: timestamp of edges.
 #    LSTM will go through messages in the order
 #    of timestamps
 # H: node repr matrix (n_nodes, in_dim)
 # lstm: LSTM module
 # W: weights (in_dim * 2, out_dim)
+from torch.nn.utils.rnn import pack_sequence
+# Build adjacency list
+adjlist = []
+for v in range(n_nodes):
+    v_mask = (dst == v)
+    t_v = t[v_mask]
+    N_v = src[v_mask]
+    indices = t_v.argsort()
+    adjlist.append(N_v[indices])
+# Pack input sequence
+seqs = [H[u] for u in adjlist]
+packed_seq = pack_sequence(seqs, False)
+# Run LSTM and compute the new H
+_, (H_N, _) = lstm(packed_seq)
+H = torch.relu(torch.cat([H_N, H], 1) @ W)
+\end{lstlisting}
+		\end{minipage}%
+		\begin{minipage}{0.5\textwidth}
+\begin{lstlisting}[language=Python]
 def reduce_func(nodes):
     indices = nodes.mailbox['t'].argsort(1)
     m = nodes.mailbox['m']
     m_ordered = m.gather(1, t[:, :, None].expand_as(m))
     return {'h_n': lstm(m)}
-
-import dgl.function as fn
-G.ndata['h'] = H
-G.update_all(fn.copy_u('h', 'm'), reduce_func)
-H_N = G.ndata['h_n']
-H = torch.relu(torch.cat([H_N, H], 1) @ W)
 \end{lstlisting}
 		\end{minipage}
 	\end{frame}
@@ -464,22 +380,14 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 			\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
 # code: PyTorch + DGL
-# An extremely simplified version of Know-Evolve, where
 # messages are sent/received in the order of edge timestamps.
 # H: node repr matrix (n_nodes, in_dim)
 # T: numpy array of edge timestamps
-def msg_func(edges):
-    return {'m': MLP_msg(edges.src['h'])}
-def reduce_func(nodes):
-    h_old = nodes.data['h']
-    h_n = nodes.mailbox['m'].sum(1)
-    return {'h': MLP_reduce(torch.cat([h_old, h_n], 1))}
-
 G.ndata['h'] = H
 distinct_T = np.sort(np.unique(T))
 for t in distinct_T:
     eid = np.where(T == t)
-    G.send_and_recv(eid, msg_func, reduce_func)
+    G.(*@\textit{\textcolor{red}{reduce\_func}}@*)(eid, msg_func, reduce_func)
 H_output = G.ndata['h']
 \end{lstlisting}
 			\end{minipage}
@@ -492,9 +400,6 @@ H_output = G.ndata['h']
 			\item DGL supports heterogeneous graphs whose nodes and edges are typed and may have type-specific features.
 			\item One can perform message passing on one edge type at a time.
 		\end{itemize}
-		\begin{center}
-			\centering
-			\begin{minipage}{0.7\textwidth}
 \begin{lstlisting}[language=Python]
 # code: PyTorch + DGL
 # xs: node features for each node type
@@ -506,29 +411,15 @@ for i, ntype in enumerate(g.ntypes):
 # intra-type aggregation
 for i, (srctype, etype, dsttype) in enumerate(g.canonical_etypes):
     g.nodes[srctype].data['h'] = g.nodes[srctype].data['x'] @ ws[etype]
-    g[srctype, etype, dsttype].update_all(
-        fn.copy_u('h', 'm'), fn.mean('m', 'h_%d'))
-
-# inter-type aggregation
-for ntype in g.ntypes:
-    g.nodes[ntype].data['h'] = sum(
-        g.nodes[ntype].data[h_name]
-        for h_name in g.nodes[ntype].data.keys()
-        if h_name.startswith('h_'))
+    g(*@\textit{\textcolor{red}{[srctype, etype, dsttype]}}@*).update_all(fn.copy_u('h', 'm'), fn.mean('m', 'h_%d'))
 \end{lstlisting}
-			\end{minipage}
-		\end{center}
 	\end{frame}
 
 	\begin{frame}[fragile]
 		\frametitle{How about heterogeneous graphs?}
 		\begin{itemize}
-			\item DGL supports heterogeneous graphs whose nodes and edges are typed and may have type-specific features.
 			\item One can also perform message passing on multiple edge types, further aggregating the outcome of per-edge-type aggregation with an \emph{cross-type reducer}.
 		\end{itemize}
-		\begin{center}
-			\centering
-			\begin{minipage}{0.7\textwidth}
 \begin{lstlisting}[language=Python]
 # code: PyTorch + DGL
 # xs: node features for each node type
@@ -544,10 +435,24 @@ for i, (srctype, etype, dsttype) in enumerate(g.canonical_etypes):
         fn.copy_u('h%d' % i, 'm'), fn.mean('m', 'h'))
 
 # message passing
-g.multi_update_all(funcs, cross_reducer='sum')
+g.(*@\textit{\textcolor{red}{multi\_update\_all(funcs, cross\_reducer='sum')}}@*)
 \end{lstlisting}
-			\end{minipage}
-		\end{center}
+	\end{frame}
+
+	\begin{frame}
+		\frametitle{Comparison of flexibility}
+		\begin{tabular}{|c|ccc|}
+			\hline
+			Computation & Tensorflow & PyTorch/MXNet & DGL \\
+			\hline
+			Average pooling & Sparse matmul & Sparse matmul & \multirow{6}{*}{Message Passing API} \\
+			Max pooling & Segment-max & N/A & \\
+			Attention pooling & Sparse softmax & N/A & \\
+			LSTM pooling & Sequence padding & Sequence padding & \\
+			Partial graph computation & Manual labor & Manual labor & \\
+			Heterogeneous graph & Manual labor & Manual labor & \\
+			\hline
+		\end{tabular}
 	\end{frame}
 
 	\begin{frame}
@@ -578,84 +483,6 @@ g.multi_update_all(funcs, cross_reducer='sum')
 	\end{frame}
 
 	\begin{frame}
-		\frametitle{How about scaling to larger graphs?}
-		\begin{itemize}
-			\item Full-graph updates become infeasible on large graphs with millions of nodes and billions of edges.
-			\item We usually sample a batch of nodes at a time to compute their representations for loss computation.
-			\item Furthermore, for each node, we can choose to receive messages from only a few nodes.
-			\begin{center}
-				\centering
-				\includegraphics[width=0.5\textwidth]{nodeflow.png}
-				
-				\small Figure taken from Chen et al., \emph{Stochastic Training of Graph Convolutional Networks with Variance Reduction}, ICML 2018
-			\end{center}
-		\end{itemize}
-	\end{frame}
-
-	\begin{frame}
-		\frametitle{Scaling to larger graphs (with NodeFlow)}
-		For each minibatch of nodes, we explicitly construct another graph containing the dependency between nodes on each message passing layer.
-		\begin{center}
-			\centering
-			\includegraphics[width=\textwidth]{nodeflow2.png}
-		\end{center}
-		Enables training on a graph with 0.5 billion nodes and 25 billion edges.
-	\end{frame}
-
-	\begin{frame}[fragile]
-		\frametitle{Scaling to larger graphs (with NodeFlow)}
-		\begin{minipage}{0.45\textwidth}
-\begin{lstlisting}[language=Python]
-# code: MXNet + DGL
-from dgl.contrib.sampling import NeighborSampler
-
-# initialize the model and cross entropy loss
-model = GCNSampling(in_feats, n_hidden, n_classes, L,
-                    mx.nd.relu, dropout, prefix='GCN')
-model.initialize()
-loss_fcn = gluon.loss.SoftmaxCELoss()
-
-for nf in NeighborSampler(
-        g, batch_size, num_neighbors,
-        neighbor_type='in', shuffle=True,
-        num_hops=L, seed_nodes=train_nid):
-    nf.copy_from_parent()
-    with mx.autograd.record():
-        # forward
-        pred = model(nf)
-        batch_nids = (
-             nf.layer_parent_nid(-1)
-             .astype('int64'))
-        batch_labels = labels[batch_nids]
-        # cross entropy loss
-        loss = loss_fcn(pred, batch_labels)
-        loss = loss.sum() / len(batch_nids)
-    loss.backward()
-\end{lstlisting}
-		\end{minipage}\hfill%
-		\begin{minipage}{0.45\textwidth}
-\begin{lstlisting}[language=Python]
-# code: MXNet + DGL
-class GCNSampling(gluon.Block):
-    # __init__ is skipped...
-    
-    def forward(self, nf):
-        nf.layers[0].data['activation'] = \
-            nf.layers[0].data['features']
-        for i, MLP in enumerate(self.MLPs):
-            h = nf.layers[i].data.pop('activation')
-            nf.layers[i].data['h'] = h
-            nf.block_compute(
-                i, fn.copy_src(src='h', out='m'),
-                fn.mean('m', 'h'))
-            nf.layers[i + 1].data['h'] = MLP(h)
-        h = nf.layers[-1].data.pop('activation')
-        return h
-\end{lstlisting}
-		\end{minipage}
-	\end{frame}
-
-	\begin{frame}
 		\frametitle{What's more?}
 		\begin{itemize}
 			\item Check out our repository: \url{https://github.com/dmlc/dgl}
@@ -665,6 +492,7 @@ class GCNSampling(gluon.Block):
 			\end{itemize}
 			\item Check out our documentation: \url{https://docs.dgl.ai}
 			\item Discussion forum: \url{https://discuss.dgl.ai}
+			\item Stay tuned for 0.5, which will include better support on large-scale \& distributed GNN training!
 		\end{itemize}
 	\end{frame}
 \end{document}

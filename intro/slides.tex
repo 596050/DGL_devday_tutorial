@@ -60,6 +60,23 @@
 	%\subject{}
 	%\setbeamercovered{transparent}
 	\setbeamertemplate{navigation symbols}{}
+	\begin{frame}
+		\begin{center}
+			\centering
+			If you have yet to do this...
+			
+			~
+			
+			\Large Please send an email to
+			
+			\Huge \url{dgl-devday@request-nb.mxnet.io}
+			
+			~
+			
+			\normalsize Content does not matter
+		\end{center}
+	\end{frame}
+	
 	\begin{frame}[plain]
 		\maketitle
 	\end{frame}
@@ -108,6 +125,7 @@ class NodeClassifier(nn.Module):
 \end{lstlisting}
 			\item We have lots of popular GNN modules implemented.
 			\begin{itemize}
+				\item For example, GCN (for embedding learning), GraphSAGE (for inductive learning), EdgeConv (for point clouds), etc.
 				\item The list is growing!
 			\end{itemize}
 		\end{itemize}
@@ -216,7 +234,7 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 # dst: edge destination node IDs (n_nodes,)
 # H: node repr matrix (n_nodes, in_dim)
 # W: weights (in_dim * 2, out_dim)
-# SIMPLIFIED - only one attention head is considered
+# Only one attention head is considered
 H_src = tf.gather(H, src)
 H_dst = tf.gather(H, dst)
 alpha_hat = MLP(tf.concat([H_dst, H_src], 1))
@@ -256,7 +274,7 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 # dst: edge destination node IDs (n_nodes,)
 # H: node repr matrix (n_nodes, in_dim)
 # W: weights (in_dim * 2, out_dim)
-# SIMPLIFIED - only one attention head is considered
+# Only one attention head is considered
 H_src = tf.gather(H, src)
 H_dst = tf.gather(H, dst)
 alpha_hat = MLP(tf.concat([H_dst, H_src], 1))
@@ -280,7 +298,8 @@ def msg_func(edges):
     return {'m': h_src, 'alpha_hat': alpha}
 
 def reduce_func(nodes):
-    # Incoming messages are batched along 2nd axis.
+    # Incoming messages are batched along
+    # 2nd axis.
     m = nodes.mailbox['m']
     alpha_hat = nodes.mailbox['alpha_hat']
     alpha = torch.softmax(alpha_hat, 1)
@@ -322,6 +341,12 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 		\end{minipage}%
 		\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
+# code: PyTorch + DGL
+# G: DGL Graph
+# H: node repr matrix (n_nodes, in_dim)
+# W: weights (in_dim * 2, out_dim)
+# lstm: LSTM module
+
 import dgl.function as fn
 G.ndata['h'] = H
 G.update_all(fn.copy_u('h', 'm'), (*@\textit{\textcolor{red}{reduce\_func}}@*))
@@ -339,7 +364,7 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 # src: edge source node IDs (n_nodes,)
 # dst: edge destination node IDs (n_nodes,)
 # t: timestamp of edges.
-#    LSTM will go through messages in the order
+#    LSTM goes through messages in the order
 #    of timestamps
 # H: node repr matrix (n_nodes, in_dim)
 # lstm: LSTM module
@@ -366,7 +391,8 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 def reduce_func(nodes):
     indices = nodes.mailbox['t'].argsort(1)
     m = nodes.mailbox['m']
-    m_ordered = m.gather(1, t[:, :, None].expand_as(m))
+    m_ordered = m.gather(
+        1, t[:, :, None].expand_as(m))
     return {'h_n': lstm(m)}
 \end{lstlisting}
 		\end{minipage}
@@ -380,7 +406,8 @@ def reduce_func(nodes):
 			\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
 # code: PyTorch + DGL
-# messages are sent/received in the order of edge timestamps.
+# messages are sent/received in the order of
+# edge timestamps.
 # H: node repr matrix (n_nodes, in_dim)
 # T: numpy array of edge timestamps
 G.ndata['h'] = H

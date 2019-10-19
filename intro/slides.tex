@@ -158,8 +158,8 @@ class NodeClassifier(nn.Module):
 			Sparse matrix multiplication, very well-known:
 \begin{lstlisting}[language=Python]
 # code: PyTorch
-# src: edge source node IDs (n_nodes,)
-# dst: edge destination node IDs (n_nodes,)
+# src: edge source node IDs (n_edges,)
+# dst: edge destination node IDs (n_edges,)
 # H: node repr matrix (n_nodes, in_dim)
 # W: weights (in_dim * 2, out_dim)
 A = torch.sparse_coo_tensor(
@@ -195,14 +195,14 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 \begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
 # code: Tensorflow 2
-# src: edge source node IDs (n_nodes,)
-# dst: edge destination node IDs (n_nodes,)
+# src: edge source node IDs (n_edges,)
+# dst: edge destination node IDs (n_edges,)
 # H: node repr matrix (n_nodes, in_dim)
 # W: weights (in_dim * 2, out_dim)
 
 # Broadcast source features to edges
 H_src = tf.gather(H, src)
-H_N = tf.math.unsorted_segment_max(
+H_N = (*@\textit{\textcolor{red}{tf.math.unsorted\_segment\_max}}@*)(
     H_src, dst, n_nodes)
 H = tf.nn.relu(tf.concat([H_N, H], 1) @ W)
 \end{lstlisting}
@@ -230,8 +230,8 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 		\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
 # code: Tensorflow 2
-# src: edge source node IDs (n_nodes,)
-# dst: edge destination node IDs (n_nodes,)
+# src: edge source node IDs (n_edges,)
+# dst: edge destination node IDs (n_edges,)
 # H: node repr matrix (n_nodes, in_dim)
 # W: weights (in_dim * 2, out_dim)
 # Only one attention head is considered
@@ -242,7 +242,7 @@ alpha_hat_sp = tf.sparse.SparseTensor(
     tf.stack([dst, src], 1),
     alpha_hat,
     (n_nodes, n_nodes))
-alpha = tf.sparse.softmax(alpha_hat_sp)
+alpha = (*@\textit{\textcolor{red}{tf.sparse.softmax}}@*)(alpha_hat_sp)
 H_N = tf.sparse.sparse_dense_matmul(
     alpha, H)
 H = tf.nn.relu(tf.concat([H_N, H], 1) @ W)
@@ -270,8 +270,8 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 		\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
 # code: Tensorflow 2
-# src: edge source node IDs (n_nodes,)
-# dst: edge destination node IDs (n_nodes,)
+# src: edge source node IDs (n_edges,)
+# dst: edge destination node IDs (n_edges,)
 # H: node repr matrix (n_nodes, in_dim)
 # W: weights (in_dim * 2, out_dim)
 # Only one attention head is considered
@@ -282,7 +282,7 @@ alpha_hat_sp = tf.sparse.SparseTensor(
     tf.stack([dst, src], 1),
     alpha_hat,
     (n_nodes, n_nodes))
-alpha = tf.sparse.softmax(alpha_hat_sp)
+alpha = (*@\textit{\textcolor{red}{tf.sparse.softmax}}@*)(alpha_hat_sp)
 H_N = tf.sparse.sparse_dense_matmul(
     alpha, H)
 H = tf.nn.relu(tf.concat([H_N, H], 1) @ W)
@@ -314,8 +314,8 @@ def reduce_func(nodes):
 		\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
 # code: PyTorch
-# src: edge source node IDs (n_nodes,)
-# dst: edge destination node IDs (n_nodes,)
+# src: edge source node IDs (n_edges,)
+# dst: edge destination node IDs (n_edges,)
 # t: timestamp of edges.
 #    LSTM goes through messages in the order
 #    of timestamps
@@ -361,8 +361,8 @@ H = torch.relu(torch.cat([H_N, H], 1) @ W)
 		\begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=Python]
 # code: PyTorch
-# src: edge source node IDs (n_nodes,)
-# dst: edge destination node IDs (n_nodes,)
+# src: edge source node IDs (n_edges,)
+# dst: edge destination node IDs (n_edges,)
 # t: timestamp of edges.
 #    LSTM goes through messages in the order
 #    of timestamps

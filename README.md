@@ -1,4 +1,4 @@
-# DGL_devday_tutorial
+# DGL devday tutorial
 
 | Section | Speaker | Materials |
 |-----------------------------------|----------------|------------|
